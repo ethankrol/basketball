@@ -62,11 +62,8 @@ def get_cleaned_game_df(season: int):
     swap_cols[2], swap_cols[4] = swap_cols[4], swap_cols[2]
     swap.columns = swap_cols
     swap['home'] = False
-
     all_games = pd.concat([df, swap], axis=0)
-
     return all_games
-
 
 def insert_df_into_db(table_name: str, df: pd.DataFrame):
     table = supabase.table(table_name)
