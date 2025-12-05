@@ -1,5 +1,4 @@
 import requests
-import csv
 import os
 import pandas as pd
 from supabase import create_client
