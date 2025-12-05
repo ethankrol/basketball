@@ -1,12 +1,7 @@
 from bs4 import BeautifulSoup
 import requests
 from dotenv import load_dotenv
-
-import requests
 import pandas as pd
-
-# Instead of feeding into beautifulsoup to parse the table tags yourself,
-# feed the html into pandas to do that for you 
 
 load_dotenv()
 headers = {
@@ -17,7 +12,7 @@ headers = {
 }
 
 for year in range(2003, 2027):
-    pass
+    week = 1
 
 response = requests.get('https://www.espn.com/mens-college-basketball/rankings/_/week/9/year/2014/seasontype/2', headers=headers)
 html_content = response.text
@@ -44,7 +39,8 @@ for tr in trs:
 
 # Subset the first 25 (AP Poll only, everything after is coaches poll)
 trends = trends[:25]
-print(trends)
+
+# Replace unsigned trends with positive-negative trends
 df['TREND'] = trends
 print(df.head(15))
 
