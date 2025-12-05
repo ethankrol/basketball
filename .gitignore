@@ -1,3 +1,5 @@
 *.tsv
 *.env
 *.toml
+*__pycache__
+*.pyc
