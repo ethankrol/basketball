@@ -42,6 +42,16 @@ trends = trends[:25]
 
 # Replace unsigned trends with positive-negative trends
 df['TREND'] = trends
+
+# Find first place votes
+df['first'] = df['Team'].str.findall('\((\d+)\)').str[0]
+df['first'].fillna(0, inplace=True)
+df['abv'] = df['Team'].str.split(' ').str[0]
+df['Team'] = df['Team'].str.replace('\(\d+\)', '', regex=True).str.rstrip().str.split(' ').str[1:].str.join(' ')
+df['wins'] = df['REC'].str.split('-').str[0].astype(int)
+df['losses'] = df['REC'].str.split('-').str[1].astype(int)
+#df.rename(columns = {'RK': 'rank', 'Team': 'team', 'REC'})
+
 print(df.head(15))
 
 
