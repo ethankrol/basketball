@@ -3,14 +3,24 @@ import requests
 from dotenv import load_dotenv
 import pandas as pd
 import os
+from datetime import date
+import json
 
-load_dotenv()
-headers = {
-    "User-Agent": "your browser UA string",
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "en-US,en;q=0.5",
-    "Referer": "https://example.com",
-}
+class ap_poll_manager:
+    def __init__(self):
+        self.env = load_dotenv()
+        self.headers = {
+            "User-Agent": "your browser UA string",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.5",
+            "Referer": "https://example.com",
+            }
+        self.first_season_espn = os.environ.get('FIRST_SEASON_ESPN')
+        self.last_season_espn = os.environ.get('CUR_SEASON_ESPN')
+        # Manually add starting weeks for each poll
+        with open('configs/week_starts.json', 'w') as file:
+            self.week_starts = json.load(file)
+        self.week_starts = {}
 
 for year in range(int(os.environ.get('FIRST_SEASON_ESPN')), int(os.environ.get('CUR_SEASON_ESPN')) + 1):
     # loop through each while the website response is valid
