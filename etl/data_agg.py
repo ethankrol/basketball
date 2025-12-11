@@ -7,6 +7,7 @@ from datetime import datetime
 from pprint import pprint
 import json 
 from io import StringIO
+from collections import Counter
 
 load_dotenv()
 
