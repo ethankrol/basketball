@@ -53,7 +53,6 @@ class APPollManager:
 
         other_teams.sort(key = lambda x : x[1], reverse=True)
         other_df = pd.DataFrame(other_teams, columns = ['Team', 'PTS', 'first'])
-        print(other_df.head(50))
 
         df['first'] = df['Team'].str.findall('\((\d+)\)').str[0]
         df['first'].fillna(0, inplace=True)
@@ -65,6 +64,12 @@ class APPollManager:
         combined_df.reset_index(drop=True, inplace=True)
         combined_df['week'] = week - invalid_count
         combined_df['season'] = year - 2000
+
+        # Need to normalize vote totals
+        vote_totals = combined_df['votes'].sum()
+        total_points = (25*26)/2
+        num_voters = vote_totals / total_points
+        combined_df['normal_votes'] = combined_df['votes'].div(other=num_voters*25)
 
         # Logic for date calculation. If it's the first week then we just fill in some random early date
         if week == 1:
@@ -91,13 +96,10 @@ class APPollManager:
                 # 2011 season starts one week later and has no preseason poll
                 if year == 2011 and week == 1:
                     continue
-
-
                 try:
                     df = self.get_week_poll(year=year, week=week, invalid_count=invalid_count)
                     res = upsert_df_into_db('polls', df)
                     print(df.head())
-                    print(res)
                 except FileNotFoundError as e:
                     print(f'Season {week} not found')
                     invalid_count +=1
@@ -183,15 +185,4 @@ combined_df['season'] = year - 2000
     # Last season was final season, continue here
     #pass
 #print(rows)'''
-load_dotenv()
-supabase_url = os.environ.get('SUPABASE_URL')
-if not supabase_url:
-    raise KeyError('Invalid supabase url in environment')
-supabase_key = os.environ.get('SUPABASE_SERVICE_KEY')
-if not supabase_key:
-    raise KeyError('Invalid supabase key in environment')
 
-supabase = create_client(supabase_url, supabase_key)
-if __name__ == '__main__':
-    ap = APPollManager()
-    ap.insert_all_polls()
