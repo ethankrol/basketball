@@ -1,0 +1,23 @@
+name: Update Games Table ETL
+
+on:
+  schedule:
+    - cron: "0 19 * 11-4 1"
+
+jobs:
+  update-games:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4
+    - name: Download python
+      uses: actions/setup-python@v5
+      with:
+        python-version: 3.11
+        cache: 'pip'
+    - name: Install dependencies
+      run: pip install -r requirements.txt
+    - name: Update polls table
+      env:
+        SUPABASE_URL: ${{secrets.SUPABASE_URL}}
+        SUPABASE_SERVICE_KEY: ${{secrets.SUPABASE_SERVICE_KEY}}
+      run: python etl/update_polls.py
