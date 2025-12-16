@@ -19,13 +19,22 @@ def get_current_season():
         return year + 1
     return year 
 
-def get_current_week():
+def get_current_week(season_start_date: date) -> int:
+    """Given the start date of a season, return the current week as a date starting on Monday."""
     today = datetime.now().date()
-    
+    return(today)
+
+def insert_current_week():
+    ap = APPollManager()
+    week = ap.get_current_week()
+    season = ap.get_current_season()
+    res = ap.insert_week_poll(week, season)
+    if res:
+        print(f'Successfully inserted season {season}, week {week} ap poll into database')
+    else:
+        print(f'Failure inserting season {season}, week {week} ap poll into database')
     
 
 if __name__ == '__main__':
-    ap = APPollManager()
-    poll = ap.get_week_poll(1, 2026)
-    ap.insert_all_polls()
+    insert_current_week()
     

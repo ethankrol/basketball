@@ -19,9 +19,44 @@ class APPollManager:
             }
         self.first_season_espn = int(os.environ.get('FIRST_SEASON_ESPN'))
         self.last_season_espn = int(os.environ.get('CUR_SEASON_ESPN'))
+        self.cur_season = int(os.environ.get('CUR_SEASON'))
+
         # Manually add starting weeks for each poll
         with open('etl/configs/week_starts.json', 'r') as file:
             self.week_starts = json.load(file)
+            self.week_starts = {int(k): datetime.strptime(v, '%Y-%m-%d').date() for (k,v) in self.week_starts.items()}
+
+    def get_start_week(self, season: int) -> date:
+        """Returns the season start date for a specific season (year). Seasons are represented by starting in the new year. Ex. 2025-2026 is represented by 2026.
+            Raises a KeyError if the season is not found.
+            """
+        season_start = self.week_starts.get(season, -1)
+        if season_start == -1:
+            raise KeyError(f'Season {season} not found')
+        
+        return season_start
+    
+    def get_current_season(self) -> int:
+        """Returns the current season (ex. 2026)"""
+        today = datetime.now()
+        month = today.month
+        year = today.year
+        if month > 10:
+            year += 1
+
+        return year
+    
+    def get_current_week(self) -> int:
+        """Returns the current integer number of weeks from the start deate of the given season. Preseason is week 1. First poll is week 2."""
+        season = self.get_current_season()
+        start_date = self.get_start_week(season)
+        today = datetime.now().date()
+        if today < start_date:
+            week = 1
+        else:
+            week = int((today - start_date).days) // 7 + 2
+
+        return week
 
     def get_week_poll(self, week: int, year: int, invalid_count=0) -> pd.DataFrame:
         response = requests.get(f'https://www.espn.com/mens-college-basketball/rankings/_/week/{week}/year/{year}/seasontype/2', headers=self.headers)
@@ -56,10 +91,12 @@ class APPollManager:
 
         df['first'] = df['Team'].str.findall('\((\d+)\)').str[0]
         df['first'].fillna(0, inplace=True)
-        df['Team'] = df['Team'].str.replace('\(\d+\)', '', regex=True).str.rstrip().str.split(' ').str[1:].str.join(' ')
+        df['Team'] = df['Team'].str.replace('\(\d+\)', '', regex=True).str.rstrip().str.split(' ').str[1:].str.join(' ').str.lower()
+        print(df.head())
 
         combined_df = pd.concat((df[['Team', 'PTS', 'first']], other_df))
         combined_df = combined_df.rename(columns = {'Team': 'team', 'PTS': 'votes', 'first': 'first_votes'})
+        combined_df['first_votes'] = combined_df['first_votes'].astype(int)
         combined_df['rank'] = combined_df['votes'].rank(method='min', ascending=False).astype(int)
         combined_df.reset_index(drop=True, inplace=True)
         combined_df['week'] = week - invalid_count
@@ -69,16 +106,19 @@ class APPollManager:
         vote_totals = combined_df['votes'].sum()
         total_points = (25*26)/2
         num_voters = vote_totals / total_points
-        combined_df['normal_votes'] = combined_df['votes'].div(other=num_voters*25)
+        combined_df['normal_votes'] = combined_df['votes'].div(other=num_voters*25).clip(upper=1.0)
+
+        # Normalize first vote totals
+        first_vote_total = combined_df['first_votes'].sum() 
+        combined_df['normal_first_votes'] = combined_df['first_votes'].div(other=first_vote_total).clip(upper=1.0)
 
         # Logic for date calculation. If it's the first week then we just fill in some random early date
         if week == 1:
             combined_df['date'] = date(day=1, month=10, year=year).isoformat()
         else:
-            season_start = self.week_starts.get(str(year - 2000), -1)
+            season_start = self.week_starts.get(year, -1)
             if season_start == -1:
                 raise KeyError(f'Season start date for season {year} not found')
-            season_start = datetime.strptime(season_start, '%Y-%m-%d').date()
             cur_date = season_start + timedelta(days=((week-2-invalid_count)*7))
             combined_df['date'] = cur_date.isoformat()
         
@@ -99,90 +139,16 @@ class APPollManager:
                 try:
                     df = self.get_week_poll(year=year, week=week, invalid_count=invalid_count)
                     res = upsert_df_into_db('polls', df)
-                    print(df.head())
                 except FileNotFoundError as e:
                     print(f'Season {week} not found')
                     invalid_count +=1
                     continue
-                
 
-        
-
-'''response = requests.get('https://www.espn.com/mens-college-basketball/rankings/_/week/9/year/2014/seasontype/2', headers=headers)
-html_content = response.text
-soup = BeautifulSoup(html_content, 'html.parser')
-
-df = pd.read_html(html_content, flavor="bs4")[0]
-
-trends = []
-trs = soup.find_all('tr')
-for tr in trs:
-    for td in tr.find_all('td'):
-        for div in td.find_all('div'):
-            cls = div.get('class')
-            trend = div.text
-            if 'positive' in cls:
-                trends.append(int(trend))
-            elif 'negative' in cls:
-                trends.append(-int(trend))
-            elif 'trend' in cls:
-                trends.append(0)
-
-# Find the "others receiving votes" text
-other_teams = []
-paragraphs = soup.find_all('p')
-for p in paragraphs[0:2]:
-    span = p.find_all('span')
-    for s in span:
-        if "Others" in s.text:
-            teams_text = p.text.split(':')[1]
-            teams_split = teams_text.strip().split(', ')
-            for team in teams_split:
-                split_team_score = team.split(' ')
-                team = ' '.join(split_team_score[:-1])
-                score = int(split_team_score[-1])
-                other_teams.append((team, score, 0))
-
-other_teams.sort(key = lambda x : x[1], reverse=True)
-other_df = pd.DataFrame(other_teams, columns = ['Team', 'PTS', 'first'])
-
-# Subset the first 25 (AP Poll only, everything after is coaches poll)
-trends = trends[:25]
-
-# Replace unsigned trends with positive-negative trends
-#df['TREND'] = trends
-
-# Find first place votes
-df['first'] = df['Team'].str.findall('\((\d+)\)').str[0]
-df['first'].fillna(0, inplace=True)
-
-# Team abbreviations
-#df['abv'] = df['Team'].str.split(' ').str[0]
-
-# Reformatted team name
-df['Team'] = df['Team'].str.replace('\(\d+\)', '', regex=True).str.rstrip().str.split(' ').str[1:].str.join(' ')
-
-# Team wins
-#df['wins'] = df['REC'].str.split('-').str[0].astype(int)
-
-# Team losses
-#df['losses'] = df['REC'].str.split('-').str[1].astype(int)
-#df['season'] = season
-#df['week'] = week
-
-combined_df = pd.concat((df[['Team', 'PTS', 'first']], other_df))
-combined_df = combined_df.rename(columns = {'Team': 'team', 'PTS': 'votes', 'first': 'first_votes'})
-combined_df['rank'] = combined_df['votes'].rank(method='min', ascending=False).astype(int)
-combined_df.reset_index(drop=True, inplace=True)
-combined_df['week'] = week
-combined_df['season'] = year - 2000
-#df.rename(columns = {'RK': 'rank', 'Team': 'team', 'REC'})
-
-#print(df.head(15))
-
-
-#if not rows:
-    # Last season was final season, continue here
-    #pass
-#print(rows)'''
-
+    def insert_week_poll(self, week: int, season: int):
+        try:
+            df = self.get_week_poll(year=season, week=week)
+            res = upsert_df_into_db('polls', df)
+            return True 
+        except FileNotFoundError:
+            print(f'Poll for season: {season}, week {week} could not be found. Nothing inserted')
+            return False

@@ -54,6 +54,8 @@ def get_cleaned_game_df(season: int):
     df['neutral'] = df['neutral'].str.split().str[0].str.contains('N', case=False, na=False)
     df['date'] = pd.to_datetime(df['date']).dt.strftime('%Y-%m-%d')
     df['home'] = True
+    df['team'] = df['team'].str.lower()
+    df['opponent'] = df['opponent'].str.lower()
 
     # Now we need to populate the games by swapping home and away teams.
     swap = df.copy()
