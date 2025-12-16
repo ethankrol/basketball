@@ -2,7 +2,7 @@ name: Update Games Table ETL
 
 on:
   schedule:
-    - cron: "0 19 * 11-4 1"
+    - cron: "0 19 * 1,2,3,4,11,12 1"
 
 jobs:
   update-games:
