@@ -26,9 +26,15 @@ polls_table = supabase.table('polls')
 
 games_teams = games_table.select('team').execute().data
 polls_teams = polls_table.select('team').execute().data
+spelling_table = supabase.table('team_spellings')
+team_spellings = spelling_table.select('team_spelling').execute().data
 
 games_set = set(k['team'] for k in games_teams)
 polls_set = set(k['team'] for k in polls_teams)
+spellings_set = set(k['team_spelling'] for k in team_spellings)
 
-combined_set = games_set ^ polls_set
-print(combined_set)
+# Print out what doesnt exist between the two
+
+all_teams = games_set | polls_set
+non_present_teams = {s for s in all_teams if s not in spellings_set}
+print(non_present_teams)
