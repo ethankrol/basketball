@@ -4,6 +4,13 @@ on:
   schedule:
     - cron: "0 19 * 1,2,3,4,11,12 1"
 
+
+env:
+  CUR_SEASON: 26
+  CUR_SEASON_ESPN: 2026
+  FIRST_SEASON: 3
+  FIRST_SEASON_ESPN: 2003
+
 jobs:
   update-games:
     runs-on: ubuntu-latest
