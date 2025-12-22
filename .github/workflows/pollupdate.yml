@@ -1,10 +1,10 @@
 name: Update Games Table ETL
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: "0 19 * 1,2,3,4,11,12 1"
-
-
+    
 env:
   CUR_SEASON: 26
   CUR_SEASON_ESPN: 2026
