@@ -68,6 +68,11 @@ class APPollManager:
                 print(f'First invalid week for season {year} is {week}')
                 invalid_count += 1
                 raise FileNotFoundError('Season not found')
+        h5 = soup.find_all('h5')
+        for h in h5:
+            if 'No poll released during this time frame' in h.text:
+                print(f'Week {week}, year {year} poll is unavailable')
+                raise FileNotFoundError('Week not found')
 
         df = pd.read_html(html_content, flavor="bs4")[0]
 
@@ -88,6 +93,7 @@ class APPollManager:
 
         other_teams.sort(key = lambda x : x[1], reverse=True)
         other_df = pd.DataFrame(other_teams, columns = ['Team', 'PTS', 'first'])
+        
 
         df['first'] = df['Team'].str.findall('\((\d+)\)').str[0]
         df['first'].fillna(0, inplace=True)
@@ -112,9 +118,9 @@ class APPollManager:
         first_vote_total = combined_df['first_votes'].sum() 
         combined_df['normal_first_votes'] = combined_df['first_votes'].div(other=first_vote_total).clip(upper=1.0)
 
-        # Logic for date calculation. If it's the first week then we just fill in some random early date
+        # Logic for date calculation. If it's the first week then we just fill in some random early date (october 1st for now)
         if week == 1:
-            combined_df['date'] = date(day=1, month=10, year=year).isoformat()
+            combined_df['date'] = date(day=1, month=10, year=year-1).isoformat()
         else:
             season_start = self.week_starts.get(year, -1)
             if season_start == -1:
