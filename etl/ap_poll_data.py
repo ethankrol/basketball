@@ -98,7 +98,6 @@ class APPollManager:
         df['first'] = df['Team'].str.findall('\((\d+)\)').str[0]
         df['first'].fillna(0, inplace=True)
         df['Team'] = df['Team'].str.replace('\(\d+\)', '', regex=True).str.rstrip().str.split(' ').str[1:].str.join(' ').str.lower()
-        print(df.head())
 
         combined_df = pd.concat((df[['Team', 'PTS', 'first']], other_df))
         combined_df = combined_df.rename(columns = {'Team': 'team', 'PTS': 'votes', 'first': 'first_votes'})

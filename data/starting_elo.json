@@ -1,0 +1,37 @@
+{
+    "ACC": 1750, 
+    "Big East": 1750, 
+    "Big Ten": 1750, 
+    "Big 12": 1750, 
+    "Pac-10": 1750, 
+    "SEC": 1750,
+    
+    "C-USA": 1550, 
+    "A-10": 1550, 
+    "Mountain West": 1550, 
+    "MVC": 1550, 
+    "WAC": 1550,
+
+    "MAC": 1350, 
+    "Sun Belt": 1350, 
+    "MCC": 1350, 
+    "WCC": 1350, 
+    "CAA": 1350, 
+    "Big West": 1350, 
+    "Ivy": 1350, 
+    "SoCon": 1350,
+    "MAAC": 1350,
+
+    "America East": 1150, 
+    "Big Sky": 1150, 
+    "Big South": 1150, 
+    "MEAC": 1150, 
+    "NEC": 1150, 
+    "OVC": 1150, 
+    "Patriot": 1150, 
+    "Southland": 1150, 
+    "SWAC": 1150, 
+    "TAAC": 1150, 
+    "Mid-Continent": 1150, 
+    "Independent": 1150
+}

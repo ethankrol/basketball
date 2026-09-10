@@ -24,6 +24,8 @@ columns = ['date', 'opponent', 'opponent_score', 'team', 'team_score', 'neutral'
 # Colspecs to split the final misc later on 
 colspecs = [(0,10), (11,33), (34,37), (38,61), (61,64),(65,90)]
 
+def get_db():
+    return supabase
 
 def get_game_season_tsvs(start: int, end: int):
     #For current season, use start = 1, end = 27
@@ -83,3 +85,10 @@ def upsert_df_into_db(table_name: str, df: pd.DataFrame):
     json_model = df.to_dict(orient='records')
     response = table.upsert(json_model).execute()
     return response
+
+def get_data(query:str, table_name: str):
+    table = supabase.table(table_name)
+    if not table:
+        raise ValueError(f'Table {table_name} not in db')
+
+    return table.select(query).execute()

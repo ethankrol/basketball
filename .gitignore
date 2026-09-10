@@ -3,3 +3,5 @@
 *.toml
 *__pycache__
 *.pyc
+.venv/
+artifacts/

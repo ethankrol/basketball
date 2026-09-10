@@ -1,0 +1,16 @@
+{
+  "season": 2025,
+  "aliases": [
+    {
+      "alias": "Miami",
+      "team_id": 1274,
+      "note": "Season-scoped ESPN poll alias for Miami FL, not Miami OH.",
+      "source": "https://www2.kusports.com/sports/college/basketball-men/2024/oct/14/ku-mens-basketball-selected-preseason-no-1/"
+    }
+  ],
+  "release_dates": {"1": "2024-10-14"},
+  "release_date_sources": {
+    "1": "https://apnews.com/article/f2d170d57b5d623e46fee4eaa5079c7d"
+  },
+  "note": "Research overrides only. Weekly legacy release dates remain provisional; invalid polls are quarantined, not repaired by assumption."
+}
