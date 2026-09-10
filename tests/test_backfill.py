@@ -16,7 +16,7 @@ def fixture():
     polls = [{"season": 25, "week": week, "date": day, "team": str(i), "votes": 26 - i,
               "first_votes": int(i == 1)} for week, day in [(1, "2024-10-14"), (2, "2024-11-11"), (3, "2024-11-18")]
              for i in range(1, 26)]
-    return {"season": 2025, "tables": {"teams": teams, "team_spellings": [], "games": games, "polls": polls}}
+    return {"season": 2025, "tables": {"teams": teams, "team_spellings": [], "team_memberships": [{"team_id": t["team_id"], "first_season": 2000, "last_season": None} for t in teams], "games": games, "polls": polls}}
 
 
 class BackfillTests(unittest.TestCase):
@@ -29,7 +29,7 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(first[2]["feature_rows"], 50)
         self.assertEqual(first[2]["mean_top25_overlap"], 25)
         self.assertEqual({r["preseason_rank"] for r in first[0] if r["team_id"] == 1}, {1})
-        self.assertEqual({r["feature_version"] for r in first[0]}, {"d1-v3"})
+        self.assertEqual({r["feature_version"] for r in first[0]}, {"d1-v4"})
 
     def test_invalid_target_is_not_zero_filled(self):
         payload = fixture()

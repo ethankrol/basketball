@@ -157,7 +157,7 @@ chronological validation are needed to establish the value of these extra featur
 Feature version `d1-v3` starts returning teams at
 `1500 + carryover * (previous_season_ending_elo - 1500)`, with a configurable
 `--elo-carryover` default of 0.75. Teams absent from prior state start at 1500.
-The backfill requires either `--prior-elo` or explicit `--bootstrap-elo` for the
+The single-season backfill requires either `--prior-elo` or explicit `--bootstrap-elo` for the
 first historical season. The example bootstraps 2024, then carries into 2025;
 for a longer rating history, build season states chronologically, passing each
 state into the following year's `build_elo_state` command. Prior-state hashes and
@@ -214,3 +214,85 @@ the report includes its size.
 
 Your earlier `etl/weekly_stats_agg.py` experiment is preserved. The working,
 side-effect-free feature implementation is now `etl/features.py`.
+
+
+## Continuous historical backfill and membership periods (v4)
+
+`team_memberships` is now authoritative for D1 participation. An inclusive
+`first_season`/`last_season` interval uses **season-ending years**; a null end means
+still active. New seasons no longer require extending every active team. Multiple
+nonoverlapping periods represent departures and returns (Houston is a real example).
+The old `teams.first_d1_season`/`last_d1_season` columns remain as legacy metadata
+and are not used by the feature pipeline. Historical imported boundaries retain
+source/provenance notes; not every legacy boundary has been independently verified.
+
+`team_season_status` records temporary nonparticipation and, where verified,
+reclassification/postseason eligibility. Postseason ineligibility does not remove a
+school from D1 feature computation. The ten 2021 nonparticipants retain membership
+and their regressed ratings for the following season. Unknown transition status is
+null, not an assertion of full postseason eligibility.
+
+Recorded changes include New Haven entering in season 2026 and Saint Francis PA
+leaving after season 2026, effective for season 2027. Legacy 2025 endpoints for
+active schools became open-ended; historical departures were preserved. Houston's
+gap and several transitional entry dates were corrected against school sources.
+
+Migrations `202609100002` through `202609100004` have been applied to the configured
+Supabase project. Apply migrations in filename order when setting up another project.
+The PostgreSQL export takes one consistent snapshot across all source tables.
+
+```sh
+.venv/bin/pip install -r requirements-db.txt
+# Fetch all history, bootstrap only 2001, carry Elo through 2026, then upload:
+.venv/bin/python -m etl.backfill_history --start 2001 --end 2026 --export --apply
+# Rebuild offline from the exports without changing Supabase:
+.venv/bin/python -m etl.backfill_history --start 2001 --end 2026
+```
+
+The runner fails on a missing game season rather than silently restarting Elo.
+The 2020 completion rule accounts for the canceled postseason. Season 2001 is
+bootstrapped at 1500; every later season uses 75% carryover (configurable with
+`--carryover`). Stored polls start in 2003, so 2001 and 2002 produce Elo states but
+no invented poll labels. Missing/invalid target or prior polls are quarantined.
+All features remain research reconstructions because legacy release dates and
+source completeness still need validation; these are not trained forecasts.
+
+Artifacts are in `artifacts/history/<season>/runs/`, with an index at
+`artifacts/history/manifest_2001_2026.json`. Each season-end state links to its
+predecessor hash and records `initial_season=2001`. `team_elo_seasons` stores ending
+Elo for all 26 seasons. Feature revisions go into the existing feature tables;
+earlier preliminary revisions are retained for reproducibility.
+
+### Membership review at the beginning of each season
+
+1. Compare the new season's roster against NCAA/school announcements. Active
+   periods continue automatically; an absence in the game feed never proves a
+   departure.
+2. Record a confirmed departure by setting the **last season actually in D1**.
+   For a new entrant/return, add a new membership period and source URL. Add new
+   team identities and source aliases before ingesting their games. Record
+   transition/postseason status separately in `team_season_status`.
+3. Export and run the audit. Optionally pass an independently checked roster as
+   a JSON array of team IDs; discrepancies exit with an error for CI use.
+
+```sh
+.venv/bin/python -m etl.audit_membership --input artifacts/history/2026/source.json
+# Optional independent roster comparison:
+.venv/bin/python -m etl.audit_membership --input artifacts/history/2026/source.json --expected-ids verified_roster_2026.json
+```
+
+Example queries (do not run with placeholder IDs):
+
+```sql
+-- A school's final season is 2027, so it is absent starting in 2028.
+update public.team_memberships
+set last_season = 2027, source = 'SOURCE_URL'
+where team_id = TEAM_ID and last_season is null;
+
+-- A school enters or returns in the 2027-28 season.
+insert into public.team_memberships(team_id, first_season, last_season, source)
+values (TEAM_ID, 2028, null, 'SOURCE_URL');
+```
+
+The annual audit reports changes; it does not autonomously scrape NCAA membership
+or invent departure dates. Existing daily Actions still ingest games/polls only.

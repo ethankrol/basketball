@@ -9,6 +9,7 @@ from pathlib import Path
 from .features import (FEATURE_VERSION, alias_map, canonical_games, compute_features,
                        content_hash, eligible_teams, validate_poll)
 from .elo import ELO_VERSION, season_initial_ratings
+from .membership import season_nonparticipants
 
 
 def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False):
@@ -16,16 +17,16 @@ def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False)
     if overrides.get("season") != season:
         raise ValueError("Overrides must explicitly match the exported season")
     aliases = alias_map(tables["teams"], tables["team_spellings"], overrides.get("aliases", []))
-    eligible = eligible_teams(tables["teams"], season)
+    eligible = eligible_teams(tables["teams"], season, tables.get('team_memberships'))
     initial_ratings = season_initial_ratings(eligible, season, prior_state, carryover, bootstrap)
-    games, game_audit = canonical_games(tables["games"], aliases, eligible, season)
+    games, game_audit = canonical_games(tables["games"], aliases, eligible, season, season_nonparticipants(tables, season))
     groups = defaultdict(list)
     for row in tables["polls"]:
         if row["season"] not in {season, season % 100}:
             raise ValueError("Mixed seasons in poll input")
         groups[row["week"]].append(row)
-    if not groups or 1 not in groups:
-        raise ValueError("Missing preseason poll")
+    if not groups:
+        raise ValueError("No polls available for this season")
     polls, issues, dates = {}, {}, {}
     for week, rows in sorted(groups.items()):
         try:
@@ -89,6 +90,7 @@ def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False)
               "mean_mae_vote_recipients": sum(m["mae_vote_recipients"] for m in metrics) / len(metrics),
               "elo_carryover": carryover, "elo_bootstrap": bootstrap,
               "prior_elo_state_hash": content_hash(prior_state) if prior_state is not None else None,
+              "elo_initial_season": prior_state.get('initial_season', prior_state['season']) if prior_state else season,
               "metrics": metrics,
               "limitations": ["Legacy weekly dates have not all been verified against source releases.",
                               "Unresolved/noneligible game opponents are excluded; all result features are D1-only.",

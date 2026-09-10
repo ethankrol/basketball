@@ -1,0 +1,186 @@
+{
+  "aliases": [
+    {
+      "alias": "southeast missouri st.",
+      "team_id": 1369,
+      "note": "Reviewed historical source spelling for SE Missouri St"
+    },
+    {
+      "alias": "st. francis ny",
+      "team_id": 1383,
+      "note": "Reviewed historical source spelling for St Francis NY"
+    },
+    {
+      "alias": "louisiana lafayette",
+      "team_id": 1418,
+      "note": "Reviewed historical source spelling for Louisiana"
+    },
+    {
+      "alias": "texas pan american",
+      "team_id": 1410,
+      "note": "Reviewed historical source spelling for UTRGV"
+    },
+    {
+      "alias": "texas el paso",
+      "team_id": 1431,
+      "note": "Reviewed historical source spelling for UTEP"
+    },
+    {
+      "alias": "st. louis",
+      "team_id": 1387,
+      "note": "Reviewed historical source spelling for St Louis"
+    },
+    {
+      "alias": "wisconsin milwaukee",
+      "team_id": 1454,
+      "note": "Reviewed historical source spelling for WI Milwaukee"
+    },
+    {
+      "alias": "wisconsin green bay",
+      "team_id": 1453,
+      "note": "Reviewed historical source spelling for WI Green Bay"
+    },
+    {
+      "alias": "missouri kansas city",
+      "team_id": 1282,
+      "note": "Reviewed historical source spelling for Missouri KC"
+    },
+    {
+      "alias": "md baltimore county",
+      "team_id": 1420,
+      "note": "Reviewed historical source spelling for UMBC"
+    },
+    {
+      "alias": "nevada las vegas",
+      "team_id": 1424,
+      "note": "Reviewed historical source spelling for UNLV"
+    },
+    {
+      "alias": "louisiana st.",
+      "team_id": 1261,
+      "note": "Reviewed historical source spelling for LSU"
+    },
+    {
+      "alias": "virginia military inst",
+      "team_id": 1440,
+      "note": "Reviewed historical source spelling for VMI"
+    },
+    {
+      "alias": "iupu fort wayne",
+      "team_id": 1236,
+      "note": "Reviewed historical source spelling for PFW"
+    },
+    {
+      "alias": "nj inst of technology",
+      "team_id": 1312,
+      "note": "Reviewed historical source spelling for NJIT"
+    },
+    {
+      "alias": "cal irvine",
+      "team_id": 1414,
+      "note": "Reviewed historical source spelling for UC Irvine"
+    },
+    {
+      "alias": "cal santa barbara",
+      "team_id": 1364,
+      "note": "Reviewed historical source spelling for UC Santa Barbara"
+    },
+    {
+      "alias": "winston salem st.",
+      "team_id": 1445,
+      "note": "Reviewed historical source spelling for W Salem St"
+    },
+    {
+      "alias": "southwest missouri st.",
+      "team_id": 1283,
+      "note": "Reviewed historical source spelling for Missouri St"
+    },
+    {
+      "alias": "st. joseph's (pa)",
+      "team_id": 1386,
+      "note": "Reviewed historical source spelling for St Joseph's PA"
+    },
+    {
+      "alias": "xavier (oh)",
+      "team_id": 1462,
+      "note": "Reviewed historical source spelling for Xavier"
+    },
+    {
+      "alias": "monmouth (nj)",
+      "team_id": 1284,
+      "note": "Reviewed historical source spelling for Monmouth NJ"
+    },
+    {
+      "alias": "md eastern shore",
+      "team_id": 1271,
+      "note": "Reviewed historical source spelling for MD E Shore"
+    },
+    {
+      "alias": "iupu ft. wayne",
+      "team_id": 1236,
+      "note": "Reviewed historical source spelling for PFW"
+    },
+    {
+      "alias": "sw texas st.",
+      "team_id": 1402,
+      "note": "Reviewed historical source spelling for Texas St"
+    },
+    {
+      "alias": "cal st. sacramento",
+      "team_id": 1170,
+      "note": "Reviewed historical source spelling for CS Sacramento"
+    },
+    {
+      "alias": "cal poly-slo",
+      "team_id": 1142,
+      "note": "Reviewed historical source spelling for Cal Poly"
+    },
+    {
+      "alias": "dixie st.",
+      "team_id": 1469,
+      "note": "Reviewed historical source spelling for Utah Tech"
+    },
+    {
+      "alias": "miami",
+      "team_id": 1274,
+      "note": "Reviewed historical source spelling for Miami FL"
+    },
+    {
+      "alias": "app state",
+      "team_id": 1111,
+      "note": "Reviewed historical source spelling for Appalachian St"
+    },
+    {
+      "alias": "southwest texas st.",
+      "team_id": 1402,
+      "note": "Reviewed historical spelling"
+    },
+    {
+      "alias": "alabama birmingham",
+      "team_id": 1412,
+      "note": "Reviewed historical spelling"
+    },
+    {
+      "alias": "cal davis",
+      "team_id": 1413,
+      "note": "Reviewed historical spelling"
+    }
+  ],
+  "seasons": {
+    "2020": {
+      "completion_floor": "2020-03-11",
+      "completion_source": "https://fs.ncaa.org.s3.amazonaws.com/Docs/stats/m_final4/Tournament.pdf",
+      "completion_note": "March 12 championship cancellation; source final completed games are March 11."
+    },
+    "2025": {
+      "release_dates": {
+        "1": "2024-10-14"
+      }
+    },
+    "2026": {
+      "release_dates": {
+        "1": "2025-10-13"
+      }
+    }
+  }
+}

@@ -5,7 +5,7 @@ from datetime import date
 import hashlib
 import json
 
-FEATURE_VERSION = "d1-v3"
+FEATURE_VERSION = "d1-v4"
 MARGIN_CAP = 20
 
 
@@ -29,14 +29,12 @@ def alias_map(teams, spellings, overrides=()):
     return result
 
 
-def eligible_teams(teams, season):
-    if season > max(t["last_d1_season"] for t in teams):
-        raise ValueError("Team eligibility metadata is stale for this season")
-    return {t["team_id"]: t["team_name"] for t in teams
-            if t["first_d1_season"] <= season <= t["last_d1_season"]}
+def eligible_teams(teams, season, memberships=None):
+    from .membership import active_teams
+    return active_teams(teams, memberships, season)
 
 
-def canonical_games(rows, aliases, eligible, season):
+def canonical_games(rows, aliases, eligible, season, nonparticipants=()):
     """Validate mirrored rows; retain one physical D1-vs-D1 game.
 
     Unresolved/noneligible opponents are explicitly excluded and reported. Features
@@ -86,8 +84,11 @@ def canonical_games(rows, aliases, eligible, season):
                       "score_a": left["team_score"], "score_b": right["team_score"],
                       "venue_a": "N" if left["neutral"] else ("H" if left["home"] else "A")})
     present = {g[k] for g in games for k in ("a", "b")}
-    if set(eligible) - present:
-        raise ValueError(f"Eligible teams without mapped D1 games: {sorted(set(eligible) - present)}")
+    if present & set(nonparticipants):
+        raise ValueError("Recorded nonparticipant has D1 games")
+    missing = set(eligible) - present - set(nonparticipants)
+    if missing:
+        raise ValueError(f"Eligible teams without mapped D1 games: {sorted(missing)}")
     return games, {"physical_d1_games": len(games), "excluded_team_game_rows": excluded_rows,
                    "unresolved_game_names": sorted(unresolved)}
 

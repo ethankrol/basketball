@@ -52,6 +52,7 @@ def main():
     base = os.environ["SUPABASE_URL"].rstrip("/")
     payload = {"season": args.season, "tables": {}}
     for table, order in [("teams", "team_id"), ("team_spellings", "team_spelling"),
+                         ("team_memberships", "team_id,first_season"), ("team_season_status", "team_id,season"),
                          ("games", "date,team,opponent"), ("polls", "week,team")]:
         rows = fetch_table(session, base, table, order, args.season if table in {"games", "polls"} else None)
         payload["tables"][table] = rows
