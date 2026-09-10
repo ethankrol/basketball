@@ -2,9 +2,9 @@ name: Validate feature pipeline
 
 on:
   push:
-    paths: ['etl/**', 'tests/**', '.github/workflows/tests.yml', 'requirements-etl.txt']
+    paths: ['etl/**', 'tests/**', 'supabase/**', '.github/workflows/tests.yml', 'requirements-etl.txt']
   pull_request:
-    paths: ['etl/**', 'tests/**', '.github/workflows/tests.yml', 'requirements-etl.txt']
+    paths: ['etl/**', 'tests/**', 'supabase/**', '.github/workflows/tests.yml', 'requirements-etl.txt']
   workflow_dispatch:
 
 permissions:

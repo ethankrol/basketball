@@ -9,7 +9,8 @@ The new pipeline exports one season from the existing Supabase tables, validates
 canonical D1 games and poll totals, builds dated feature snapshots, and evaluates
 a persistence forecast (repeat the previous poll's normalized points).
 
-It is **research-only**: it does not write to Supabase or publish predictions.
+It is **research-only**: backfilling does not write to Supabase or publish predictions.
+The separate upload command can store these artifacts in private research tables.
 The existing daily ingestion scripts are separate and have not been replaced.
 
 ```sh
@@ -46,6 +47,85 @@ Repeated identical inputs produce identical outputs. A changed source/configurat
 creates a separate directory. Bump `FEATURE_VERSION` when feature semantics change.
 These are reconstructed historical runs, not evidence that a forecast was issued
 before its target poll.
+
+## Upload the computed data to Supabase
+
+1. Open your Supabase project -> **SQL Editor** -> **New query**. Paste and run
+   [the feature backfill migration](supabase/migrations/202609100001_feature_backfills.sql)
+   once. It creates new tables, a view and an upload function in one transaction.
+   The API service key cannot install arbitrary SQL by itself. This migration
+   was applied to the configured project on September 10, 2026. Do not rerun
+   this initial migration there; it is needed only when setting up another database.
+2. Preview an exact backfill directory (the final directory printed by the
+   backfill command), then add `--apply` to upload:
+
+```sh
+.venv/bin/python -m etl.upload_backfill --artifact-dir artifacts/2025/backfill/8fefd77820d0b6e78ccf1b50c3a397007cb64b35ce90b66047992dc2dbec095e
+.venv/bin/python -m etl.upload_backfill --artifact-dir artifacts/2025/backfill/8fefd77820d0b6e78ccf1b50c3a397007cb64b35ce90b66047992dc2dbec095e --apply
+```
+
+That directory contains the initial 2025 `d1-v3` build with 2024 Elo carryover.
+Use your newly printed directory instead if rebuilding changes the source hash.
+This upload contains **6,188 feature rows and 6,188 persistence prediction rows**.
+No re-export or new scrape is needed to upload an existing artifact.
+
+For a PostgreSQL connection (including the session pooler), set `SUPABASE_DB_URL`
+in `.env`, install `requirements-db.txt`, and add `--direct-db --apply` to the
+upload command. This calls the same atomic function without the REST API key.
+The initial 2025 upload used this route successfully on September 10, 2026;
+the REST route returned HTTP 401 and its API credentials still need checking
+before relying on it for automated uploads.
+
+New relations:
+
+| Relation | Contents |
+|---|---|
+| `feature_backfills` | One immutable dataset revision with report, Elo provenance and research status |
+| `team_feature_snapshots` | Typed feature columns for every team and usable poll cutoff |
+| `baseline_predictions` | Reconstructed persistence forecasts and evaluation labels |
+| `team_season_features_current` | Latest available cutoff in the most recently uploaded revision of each season |
+
+The current view will contain 364 rows for this 2025 backfill and uses March 17,
+2025 snapshots. It is **not** an end-of-season or live September 2026 summary.
+Uploading an older research revision later makes that revision current; upload
+the intended revision last. Re-uploading an identical existing revision is a
+no-op and does not change its timestamp.
+
+The uploader checks columns, IDs, team coverage and paired predictions before
+making a request. The database function then inserts the entire dataset in one
+transaction. Duplicate retries are harmless; the same dataset ID with different
+content is rejected. A failed transaction rolls back. If a network timeout loses
+the acknowledgment, rerun the same command. Files must be from one complete build.
+
+All new tables remain private to server/service-role access with row-level
+security enabled; the browser gets no new read or write permissions. Existing
+`games`, `polls`, `teams` and `team_spellings` are untouched. Skipped polls stay
+skipped, and the raw December 16 poll still needs source repair. This command
+does not upload the separate season-end Elo state file; that file remains an
+input to future backfills, whose provenance is recorded in the report.
+
+After upload, verify in the SQL Editor:
+
+```sql
+select season, feature_version, expected_rows, mode, uploaded_at
+from public.feature_backfills order by uploaded_at desc;
+
+select season, target_week, count(*)
+from public.team_season_features_current
+group by season, target_week;
+
+select team_name, d1_elo, d1_mean_capped_margin,
+       d1_mean_opponent_pregame_elo, preseason_rank
+from public.team_season_features_current
+where season = 2025 order by d1_elo desc limit 25;
+```
+
+This is a manual research upload. Daily Actions still run the original ingestion
+jobs; scheduled feature publication is not wired in yet. Python tests cover the
+upload contract and error handling. The migration and PostgreSQL upload were
+verified on September 10, 2026: 6,188 feature rows, 6,188 prediction rows and
+364 current-view rows. A repeated upload returned `already_uploaded`. RLS was
+enabled on all three tables and anon/authenticated roles could not execute the RPC.
 
 ## Feature definitions
 
@@ -126,9 +206,8 @@ the report includes its size.
 
 1. Verify the release calendar and repair the missing vote recipient from a cited
    source; audit excluded game names and historical coverage.
-2. Export the deployed schema/constraints and add versioned feature-run tables,
-   typed snapshot columns, prediction tables and atomic publication. The current
-   repository contains no applied migration for these tables.
+2. Apply the feature-backfill migration above and verify a real upload. Audit the
+   existing source-table constraints before changing the ingestion jobs.
 3. Backfill additional verified seasons and add chronological model evaluation.
 4. Refresh team-season eligibility for 2026/2027 before running those seasons.
 5. Wire validated feature/inference runs into scheduled jobs and build the UI.
