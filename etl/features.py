@@ -5,7 +5,7 @@ from datetime import date
 import hashlib
 import json
 
-FEATURE_VERSION = "d1-v4"
+FEATURE_VERSION = "d1-v5"
 MARGIN_CAP = 20
 
 
@@ -158,12 +158,13 @@ def compute_features(games, eligible, cutoff, previous_poll, previous_date, k=20
             delta = k * (won - expected)
             changes[a] += delta
             changes[b] -= delta
-            for t, opp, win, margin, venue in [
-                (a, b, won, g["score_a"] - g["score_b"], g["venue_a"]),
-                (b, a, 1 - won, g["score_b"] - g["score_a"], {"H": "A", "A": "H", "N": "N"}[g["venue_a"]])
+            for t, opp, win, margin, venue, elo_delta in [
+                (a, b, won, g["score_a"] - g["score_b"], g["venue_a"], delta),
+                (b, a, 1 - won, g["score_b"] - g["score_a"], {"H": "A", "A": "H", "N": "N"}[g["venue_a"]], -delta)
             ]:
                 history[t].append({"day": date.fromisoformat(day), "win": win, "margin": margin,
-                                   "venue": venue, "opponent_elo": ratings[opp], "opponent": opp})
+                                   "venue": venue, "opponent_elo": ratings[opp], "opponent": opp,
+                                   "elo_delta": elo_delta})
         for t, delta in changes.items():
             ratings[t] += delta
     result = []
@@ -173,10 +174,15 @@ def compute_features(games, eligible, cutoff, previous_poll, previous_date, k=20
         old = previous_poll.get(t, {"score": 0.0, "rank": 0})
         preseason = preseason_poll.get(t, {"score": 0.0, "rank": 0}) if preseason_poll is not None else None
         capped = lambda game: max(-MARGIN_CAP, min(MARGIN_CAP, game["margin"]))
+        def window(n): return played[-n:]
+        def win_pct(items): return sum(g["win"] for g in items) / len(items) if items else None
+        def mean(items, key): return sum(key(g) for g in items) / len(items) if items else None
+        def venue_pct(label): return win_pct([g for g in played if g["venue"] == label])
+        ranked_recent = [g for g in recent if 0 < previous_poll.get(g["opponent"], {}).get("rank", 0) <= 25]
         row = {"team_id": t, "team_name": eligible[t], "d1_games": len(played),
                "d1_wins": sum(g["win"] for g in played),
                "d1_losses": sum(1 - g["win"] for g in played),
-               "d1_win_pct": sum(g["win"] for g in played) / len(played) if played else None,
+               "d1_win_pct": win_pct(played),
                "d1_mean_margin": sum(g["margin"] for g in played) / len(played) if played else None,
                "d1_mean_capped_margin": sum(capped(g) for g in played) / len(played) if played else None,
                "d1_elo": ratings[t],
@@ -187,7 +193,19 @@ def compute_features(games, eligible, cutoff, previous_poll, previous_date, k=20
                "since_poll_d1_mean_capped_margin": sum(capped(g) for g in recent) / len(recent) if recent else None,
                "since_poll_d1_mean_opponent_pregame_elo": sum(g["opponent_elo"] for g in recent) / len(recent) if recent else None,
                "since_poll_ranked_wins": sum(g["win"] and 0 < previous_poll.get(g["opponent"], {}).get("rank", 0) <= 25 for g in recent),
-               "last_five_d1_wins": sum(g["win"] for g in played[-5:]),
+               "since_poll_ranked_losses": sum(not g["win"] for g in ranked_recent),
+               "since_poll_unranked_losses": sum(not g["win"] for g in recent if g not in ranked_recent),
+               "since_poll_elo_change": sum(g["elo_delta"] for g in recent),
+               "d1_elo_change": sum(g["elo_delta"] for g in played),
+               "last_three_d1_wins": sum(g["win"] for g in window(3)),
+               "last_three_d1_win_pct": win_pct(window(3)),
+               "last_five_d1_wins": sum(g["win"] for g in window(5)),
+               "last_five_d1_win_pct": win_pct(window(5)),
+               "last_five_d1_mean_capped_margin": mean(window(5), capped),
+               "last_five_d1_mean_opponent_pregame_elo": mean(window(5), lambda g: g["opponent_elo"]),
+               "last_ten_d1_wins": sum(g["win"] for g in window(10)),
+               "last_ten_d1_win_pct": win_pct(window(10)),
+               "last_ten_d1_mean_capped_margin": mean(window(10), capped),
                "rest_days": (cutoff - played[-1]["day"]).days if played else None,
                "previous_normal_points": old["score"],
                "previous_rank": old["rank"] if 0 < old["rank"] <= 25 else None,
@@ -203,6 +221,7 @@ def compute_features(games, eligible, cutoff, previous_poll, previous_date, k=20
             subset = [g for g in played if g["venue"] == venue]
             row[f"d1_{label}_games"] = len(subset)
             row[f"d1_{label}_wins"] = sum(g["win"] for g in subset)
+            row[f"d1_{label}_win_pct"] = win_pct(subset)
         result.append(row)
     return result
 
