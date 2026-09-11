@@ -296,3 +296,8 @@ values (TEAM_ID, 2028, null, 'SOURCE_URL');
 
 The annual audit reports changes; it does not autonomously scrape NCAA membership
 or invent departure dates. Existing daily Actions still ingest games/polls only.
+
+The current view has indexes on revision/season and revision/cutoff/team. If a
+large Supabase project still serves this view slowly, use a materialized summary
+table for the website and refresh it after each successful upload; do not make the
+browser scan all historical snapshots on every request.
