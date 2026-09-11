@@ -52,6 +52,7 @@ def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False,
         rows = compute_features(games, eligible, cutoff, polls[week - 1], prior_date,
                                 preseason_poll=polls.get(1), preseason_date=dates.get(1), initial_ratings=initial_ratings,
                                 previous_previous_poll=polls.get(week - 2), k=elo_k,
+                                previous_poll_history=[polls.get(week - lag) for lag in range(1, 5)],
                                 margin_of_victory=margin_of_victory)
         run_id = content_hash({"source": source_hash, "week": week, "cutoff": cutoff})
         # Tie-break by stable ID for reproducible display; scores retain ties.

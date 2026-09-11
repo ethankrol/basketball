@@ -41,6 +41,8 @@ class UploadTests(unittest.TestCase):
         sql += "\n" + (root / "202609110001_feature_v5.sql").read_text()
         sql += "\n" + (root / "202609110002_feature_v6.sql").read_text()
         sql += "\n" + (root / "202609110003_feature_v7.sql").read_text()
+        sql += "\n" + (root / "202609110004_feature_v8.sql").read_text()
+        sql += "\n" + (root / "202609110005_feature_v9.sql").read_text()
         for table, expected in [("team_feature_snapshots", FEATURE_COLUMNS), ("baseline_predictions", PREDICTION_COLUMNS)]:
             body = sql.split(f"create table public.{table} (", 1)[1].split("\n);", 1)[0]
             if table == "team_feature_snapshots":
