@@ -96,6 +96,37 @@ def inclusion_metrics(frame, probability):
             "roc_auc": float(roc_auc_score(labels, probabilities))}
 
 
+def rank_metrics(frame, predicted_rank):
+    """Evaluate an ordinal rank model without treating ranks as vote scores."""
+    values = frame[["season", "target_week", "team_id", TARGET, "actual_rank"]].copy()
+    values["predicted_rank"] = predicted_rank
+    overlaps, errors, exact, within_two = [], [], [], []
+    for _, poll in values.groupby(["season", "target_week"], sort=True):
+        actual = set(poll.nlargest(25, TARGET).team_id)
+        predicted = set(poll.nsmallest(25, "predicted_rank").team_id)
+        overlaps.append(len(actual & predicted))
+        order = poll.sort_values(["predicted_rank", "team_id"])
+        ranks = {team: rank for rank, team in enumerate(order.team_id, 1)}
+        for _, row in poll[poll.team_id.isin(actual)].iterrows():
+            error = abs(ranks[row.team_id] - int(row.actual_rank))
+            errors.append(error)
+            exact.append(error == 0)
+            within_two.append(error <= 2)
+    return {"polls": len(overlaps), "mean_top25_overlap": float(np.mean(overlaps)),
+            "top25_mean_absolute_rank_error": float(np.mean(errors)),
+            "top25_exact_rank_accuracy": float(np.mean(exact)),
+            "top25_within_two_rank_accuracy": float(np.mean(within_two))}
+
+
+def ordinal_targets(data):
+    """Map every team in each poll to its full order; 26 means unranked."""
+    target = np.zeros(len(data), dtype=float)
+    for _, indices in data.groupby(["season", "target_week"], sort=False).groups.items():
+        poll = data.loc[indices].sort_values([TARGET, "team_id"], ascending=[False, True])
+        target[poll.index.to_numpy()] = np.minimum(np.arange(1, len(poll) + 1), 26)
+    return target
+
+
 def rolling_validation(data, seed=42, minimum_training_seasons=8, holdout_seasons=2):
     """Evaluate the delta model one season at a time in chronological order."""
     seasons = sorted(data.season.unique())[:-holdout_seasons]
@@ -143,6 +174,7 @@ def train(data, test_seasons=2, seed=42):
     y = data[TARGET].to_numpy()
     prior = data["previous_normal_points"].to_numpy()
     y_delta = y - prior
+    y_rank = ordinal_targets(data)
 
     from sklearn.linear_model import Ridge
     from sklearn.ensemble import HistGradientBoostingRegressor
@@ -182,9 +214,17 @@ def train(data, test_seasons=2, seed=42):
         "validation": inclusion_metrics(data[data.season.isin(validation)], inclusion_pred),
         "test": inclusion_metrics(data[data.season.isin(test)], inclusion.predict_proba(X_test)[:, 1]),
     }
+    rank_model = HistGradientBoostingRegressor(max_iter=300, max_leaf_nodes=15,
+                                                learning_rate=.04, l2_regularization=5,
+                                                random_state=seed)
+    rank_model.fit(X_train, y_rank[train_mask])
+    report["models"]["hgb_rank"] = {
+        "validation": rank_metrics(data[data.season.isin(validation)], rank_model.predict(X_val)),
+        "test": rank_metrics(data[data.season.isin(test)], rank_model.predict(X_test)),
+    }
     # Select on validation overlap, with MAE as tie-breaker, then refit selected
     # model on train + validation before the untouched test is reported.
-    selected = min((n for n in report["models"] if n != "hgb_top25_inclusion"),
+    selected = min((n for n in report["models"] if n in {"ridge_score", "hgb_score", "hgb_delta"}),
                    key=lambda n: (report["models"][n]["validation"]["top25_mean_absolute_rank_error"],
                                   -report["models"][n]["validation"]["mean_top25_overlap"],
                                   report["models"][n]["validation"]["mae"]))
@@ -199,7 +239,7 @@ def train(data, test_seasons=2, seed=42):
         final_model.predict(X_test) + (prior[data.season.isin(test)] if selected == "hgb_delta" else 0))
     report["baseline_persistence_test"] = metrics(data[data.season.isin(test)], prior[data.season.isin(test)])
     report["rolling_validation"] = rolling_validation(data, seed=seed, holdout_seasons=test_seasons)
-    return final_model, inclusion, imputer, features, report
+    return final_model, inclusion, rank_model, imputer, features, report
 
 
 def main():
@@ -210,10 +250,11 @@ def main():
     parser.add_argument("--end", type=int, default=2026)
     args = parser.parse_args()
     data = load_rows(args.root, args.start, args.end)
-    model, inclusion, imputer, features, report = train(data)
+    model, inclusion, rank_model, imputer, features, report = train(data)
     args.output.mkdir(parents=True, exist_ok=True)
     import joblib
-    joblib.dump({"model": model, "inclusion_model": inclusion, "imputer": imputer, "features": features,
+    joblib.dump({"model": model, "inclusion_model": inclusion, "rank_model": rank_model,
+                 "imputer": imputer, "features": features,
                  "target": report["target"], "model_name": report["selected_model"]},
                 args.output / "model.joblib")
     (args.output / "features.json").write_text(json.dumps(features, indent=2) + "\n")

@@ -30,6 +30,7 @@ def build_state(payload, prior_state=None, carryover=0.75, bootstrap=False, over
     return {"season": season, "elo_version": ELO_VERSION, "through_date_exclusive": f"{season}-07-01",
             "source_hash": content_hash({"tables": tables, "overrides": overrides}), "prior_state_hash": content_hash(prior_state) if prior_state else None,
             "carryover": carryover, "bootstrap": bootstrap, "audit": audit,
+            "initial_ratings": {str(t): r for t, r in initial.items()},
             "initial_season": prior_state.get('initial_season', prior_state['season']) if prior_state else season,
             "ratings": {str(r["team_id"]): r["d1_elo"] for r in rows}}
 

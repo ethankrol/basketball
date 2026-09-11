@@ -39,10 +39,13 @@ class UploadTests(unittest.TestCase):
         root = Path(__file__).resolve().parents[1] / "supabase/migrations"
         sql = (root / "202609100001_feature_backfills.sql").read_text()
         sql += "\n" + (root / "202609110001_feature_v5.sql").read_text()
+        sql += "\n" + (root / "202609110002_feature_v6.sql").read_text()
+        sql += "\n" + (root / "202609110003_feature_v7.sql").read_text()
         for table, expected in [("team_feature_snapshots", FEATURE_COLUMNS), ("baseline_predictions", PREDICTION_COLUMNS)]:
             body = sql.split(f"create table public.{table} (", 1)[1].split("\n);", 1)[0]
             if table == "team_feature_snapshots":
-                body += "\n" + sql.split("alter table public.team_feature_snapshots", 1)[1].split("do $$", 1)[0]
+                for alter in sql.split("alter table public.team_feature_snapshots")[1:]:
+                    body += "\n" + alter.split("do $$", 1)[0]
             columns = set(re.findall(r"^    (\w+) (?:text|integer|bigint|date|double precision|boolean)\b", body, re.MULTILINE))
             if table == "team_feature_snapshots":
                 columns.update(re.findall(r"add column (\w+)", body))

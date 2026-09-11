@@ -29,7 +29,7 @@ class BackfillTests(unittest.TestCase):
         self.assertEqual(first[2]["feature_rows"], 50)
         self.assertEqual(first[2]["mean_top25_overlap"], 25)
         self.assertEqual({r["preseason_rank"] for r in first[0] if r["team_id"] == 1}, {1})
-        self.assertEqual({r["feature_version"] for r in first[0]}, {"d1-v5"})
+        self.assertEqual({r["feature_version"] for r in first[0]}, {"d1-v7"})
 
     def test_invalid_target_is_not_zero_filled(self):
         payload = fixture()

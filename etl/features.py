@@ -5,7 +5,7 @@ from datetime import date
 import hashlib
 import json
 
-FEATURE_VERSION = "d1-v5"
+FEATURE_VERSION = "d1-v7"
 MARGIN_CAP = 20
 
 
@@ -122,7 +122,8 @@ def validate_poll(rows, aliases, eligible):
 
 
 def compute_features(games, eligible, cutoff, previous_poll, previous_date, k=20.0, home_advantage=65.0,
-                     *, preseason_poll=None, preseason_date=None, initial_ratings=None):
+                     *, preseason_poll=None, preseason_date=None, initial_ratings=None,
+                     previous_previous_poll=None):
     """Use game dates strictly before cutoff; replay both sides once per game.
 
     Same-day ratings use a common start-of-day state. Callers supply regressed
@@ -172,6 +173,7 @@ def compute_features(games, eligible, cutoff, previous_poll, previous_date, k=20
         played = history[t]
         recent = [g for g in played if g["day"] >= previous_date]
         old = previous_poll.get(t, {"score": 0.0, "rank": 0})
+        prior_old = ((previous_previous_poll or {}).get(t, {"score": 0.0, "rank": 0}))
         preseason = preseason_poll.get(t, {"score": 0.0, "rank": 0}) if preseason_poll is not None else None
         capped = lambda game: max(-MARGIN_CAP, min(MARGIN_CAP, game["margin"]))
         def window(n): return played[-n:]
@@ -179,6 +181,15 @@ def compute_features(games, eligible, cutoff, previous_poll, previous_date, k=20
         def mean(items, key): return sum(key(g) for g in items) / len(items) if items else None
         def venue_pct(label): return win_pct([g for g in played if g["venue"] == label])
         ranked_recent = [g for g in recent if 0 < previous_poll.get(g["opponent"], {}).get("rank", 0) <= 25]
+        last3, last5, last10 = window(3), window(5), window(10)
+        def poll_rank(game):
+            rank = previous_poll.get(game["opponent"], {}).get("rank", 0)
+            return rank if 0 < rank <= 25 else 26
+        recent_wins = [g for g in recent if g["win"]]
+        recent_losses = [g for g in recent if not g["win"]]
+        recent_ranked_wins = [g for g in recent_wins if 0 < previous_poll.get(g["opponent"], {}).get("rank", 0) <= 25]
+        recent_ranked_losses = [g for g in recent_losses if 0 < previous_poll.get(g["opponent"], {}).get("rank", 0) <= 25]
+        recent_unranked_losses = [g for g in recent_losses if g not in recent_ranked_losses]
         row = {"team_id": t, "team_name": eligible[t], "d1_games": len(played),
                "d1_wins": sum(g["win"] for g in played),
                "d1_losses": sum(1 - g["win"] for g in played),
@@ -206,10 +217,33 @@ def compute_features(games, eligible, cutoff, previous_poll, previous_date, k=20
                "last_ten_d1_wins": sum(g["win"] for g in window(10)),
                "last_ten_d1_win_pct": win_pct(window(10)),
                "last_ten_d1_mean_capped_margin": mean(window(10), capped),
+               "since_poll_ranked_win_pct": (sum(g["win"] for g in ranked_recent) / len(ranked_recent)
+                                             if ranked_recent else None),
+               "since_poll_ranked_loss_pct": (sum(not g["win"] for g in ranked_recent) / len(ranked_recent)
+                                              if ranked_recent else None),
+               "recent_win_pct_change": (win_pct(last3) - win_pct(last10)
+                                          if last3 and last10 else None),
+               "recent_margin_change": (mean(last5, capped) - mean(played, capped)
+                                        if last5 and played else None),
+               "recent_sos_change": (mean(last5, lambda g: g["opponent_elo"]) -
+                                     mean(played, lambda g: g["opponent_elo"])
+                                     if last5 and played else None),
+               "since_poll_best_win_opponent_rank": min((poll_rank(g) for g in recent_wins), default=None),
+               "since_poll_worst_loss_opponent_rank": max((poll_rank(g) for g in recent_losses), default=None),
+               "last_five_best_win_opponent_rank": min((poll_rank(g) for g in window(5) if g["win"]), default=None),
+               "last_five_worst_loss_opponent_rank": max((poll_rank(g) for g in window(5) if not g["win"]), default=None),
+               "since_poll_best_win_opponent_elo": max((g["opponent_elo"] for g in recent_wins), default=None),
+               "since_poll_worst_loss_opponent_elo": min((g["opponent_elo"] for g in recent_losses), default=None),
+               "since_poll_quality_weighted_wins": sum(27 - poll_rank(g) for g in recent_ranked_wins),
+               "since_poll_quality_weighted_losses": (sum(27 - poll_rank(g) for g in recent_ranked_losses)
+                                                        + len(recent_unranked_losses)),
                "rest_days": (cutoff - played[-1]["day"]).days if played else None,
                "previous_normal_points": old["score"],
                "previous_rank": old["rank"] if 0 < old["rank"] <= 25 else None,
                "previous_ranked": 0 < old["rank"] <= 25}
+        row["previous_score_change"] = old["score"] - prior_old["score"] if previous_previous_poll is not None else None
+        row["previous_rank_change"] = (prior_old["rank"] - old["rank"]
+                                        if previous_previous_poll is not None and old["rank"] and prior_old["rank"] else None)
         row.update({
             "preseason_poll_available": preseason is not None,
             "preseason_normal_points": preseason["score"] if preseason is not None else None,

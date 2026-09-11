@@ -50,7 +50,8 @@ def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False)
         cutoff = dates[week]
         prior_date = dates[week - 1]
         rows = compute_features(games, eligible, cutoff, polls[week - 1], prior_date,
-                                preseason_poll=polls.get(1), preseason_date=dates.get(1), initial_ratings=initial_ratings)
+                                preseason_poll=polls.get(1), preseason_date=dates.get(1), initial_ratings=initial_ratings,
+                                previous_previous_poll=polls.get(week - 2))
         run_id = content_hash({"source": source_hash, "week": week, "cutoff": cutoff})
         # Tie-break by stable ID for reproducible display; scores retain ties.
         ordered = sorted(rows, key=lambda r: (-r["previous_normal_points"], r["team_id"]))
