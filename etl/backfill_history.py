@@ -36,7 +36,7 @@ def export_history(connection, root, start, end):
                 print(f"Exported {season}: {len(tables['games'])} game rows, {len(tables['polls'])} poll rows",flush=True)
 
 
-def run_history(root, start, end, config, carryover=.75):
+def run_history(root, start, end, config, carryover=.75, elo_k=20.0, margin_of_victory=False):
     prior = None
     previous_members = None
     manifest = {'initial_season':start,'last_season':end,'carryover':carryover,'seasons':[]}
@@ -45,7 +45,8 @@ def run_history(root, start, end, config, carryover=.75):
         if payload['season'] != season:
             raise ValueError('Source season does not match the chronological sequence')
         overrides = {'season':season, 'aliases':config.get('aliases',[]), **config.get('seasons',{}).get(str(season),{})}
-        state = build_state(payload, prior, carryover, bootstrap=prior is None, overrides=overrides)
+        state = build_state(payload, prior, carryover, bootstrap=prior is None, overrides=overrides,
+                            elo_k=elo_k, margin_of_victory=margin_of_victory)
         state_id = content_hash(state)
         output = root / str(season) / 'runs' / state_id
         output.mkdir(parents=True, exist_ok=True)
@@ -60,7 +61,8 @@ def run_history(root, start, end, config, carryover=.75):
             # Data errors propagate, except the explicitly expected absence of
             # usable adjacent polls. Never reset Elo to get past an error.
             try:
-                rows,predictions,report = build(payload,overrides,prior,carryover,bootstrap=prior is None)
+                rows,predictions,report = build(payload,overrides,prior,carryover,bootstrap=prior is None,
+                                                elo_k=elo_k, margin_of_victory=margin_of_victory)
             except ValueError as exc:
                 if not str(exc).startswith('No valid adjacent polls to evaluate:'):
                     raise
@@ -111,6 +113,8 @@ def main():
     parser.add_argument('--root',type=Path,default=Path('artifacts/history'))
     parser.add_argument('--config',type=Path,default=Path('etl/configs/history.json'))
     parser.add_argument('--carryover',type=float,default=.75)
+    parser.add_argument('--elo-k',type=float,default=20.0)
+    parser.add_argument('--elo-mov',action='store_true', help='Use capped margin-of-victory Elo updates')
     parser.add_argument('--export',action='store_true')
     parser.add_argument('--apply',action='store_true')
     args = parser.parse_args()
@@ -124,7 +128,8 @@ def main():
             connection=psycopg.connect(os.environ['SUPABASE_DB_URL'],sslmode='require',connect_timeout=15,autocommit=True)
         if args.export:
             export_history(connection,args.root,args.start,args.end)
-        manifest=run_history(args.root,args.start,args.end,json.loads(args.config.read_text()),args.carryover)
+        manifest=run_history(args.root,args.start,args.end,json.loads(args.config.read_text()),args.carryover,
+                             args.elo_k, args.elo_mov)
         if args.apply:
             publish_history(connection,manifest)
     finally:

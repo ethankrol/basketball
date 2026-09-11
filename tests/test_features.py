@@ -71,6 +71,19 @@ class FeatureTests(unittest.TestCase):
         self.assertEqual(rows[2]["d1_mean_opponent_pregame_elo"], 1490)
         self.assertEqual(rows[2]["since_poll_d1_mean_opponent_pregame_elo"], 1490)
 
+    def test_previous_point_gaps_and_nearby_team_results(self):
+        previous = {1: {"score": .50, "rank": 10},
+                    2: {"score": .49, "rank": 11},
+                    3: {"score": .10, "rank": 24}}
+        alpha = compute_features(self.games, self.teams, "2024-11-04", previous, "2024-10-14")[0]
+        self.assertAlmostEqual(alpha["previous_points_gap_to_next_lower"], .01)
+        self.assertIsNone(alpha["previous_points_gap_to_next_higher"])
+        self.assertEqual(alpha["previous_nearby_team_count"], 1)
+        self.assertEqual(alpha["nearby_teams_since_poll_wins"], 0)
+        self.assertEqual(alpha["nearby_teams_since_poll_losses"], 2)
+        self.assertAlmostEqual(alpha["since_poll_best_win_opponent_previous_normal_points"], .49)
+        self.assertEqual(alpha["since_poll_losses_to_higher_point_teams"], 0)
+
     def test_preseason_anchor_and_missingness(self):
         preseason = {1: {"rank": 1, "score": .98}, 2: {"rank": 30, "score": .02}}
         rows = compute_features(self.games, self.teams, "2024-11-04", {}, "2024-10-28",

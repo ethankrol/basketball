@@ -10,7 +10,7 @@ from .features import alias_map, canonical_games, compute_features, content_hash
 from .membership import season_nonparticipants
 
 
-def build_state(payload, prior_state=None, carryover=0.75, bootstrap=False, overrides=None):
+def build_state(payload, prior_state=None, carryover=0.75, bootstrap=False, overrides=None, elo_k=20.0, margin_of_victory=False):
     season, tables = payload["season"], payload["tables"]
     if date.today() < date(season, 7, 1):
         raise ValueError("Cannot finalize Elo for an unfinished season")
@@ -18,6 +18,8 @@ def build_state(payload, prior_state=None, carryover=0.75, bootstrap=False, over
     overrides = overrides or {"season": season}
     if overrides["season"] != season:
         raise ValueError("Overrides must match the Elo season")
+    if prior_state is not None and float(prior_state.get("elo_k", elo_k)) != float(elo_k):
+        raise ValueError("Prior Elo state uses a different K-factor")
     aliases = alias_map(tables["teams"], tables["team_spellings"], overrides.get("aliases", []))
     games, audit = canonical_games(tables["games"], aliases, eligible, season, season_nonparticipants(tables, season))
     # Catch obviously partial exports; full completeness still requires source audit.
@@ -26,10 +28,11 @@ def build_state(payload, prior_state=None, carryover=0.75, bootstrap=False, over
         raise ValueError("Prior-season games do not extend into April; export appears incomplete")
     initial = season_initial_ratings(eligible, season, prior_state, carryover, bootstrap)
     rows = compute_features(games, eligible, f"{season}-07-01", {}, f"{season - 1}-07-01",
-                            initial_ratings=initial)
+                            initial_ratings=initial, k=elo_k, margin_of_victory=margin_of_victory)
     return {"season": season, "elo_version": ELO_VERSION, "through_date_exclusive": f"{season}-07-01",
             "source_hash": content_hash({"tables": tables, "overrides": overrides}), "prior_state_hash": content_hash(prior_state) if prior_state else None,
-            "carryover": carryover, "bootstrap": bootstrap, "audit": audit,
+            "carryover": carryover, "elo_k": elo_k, "margin_of_victory": margin_of_victory,
+            "bootstrap": bootstrap, "audit": audit,
             "initial_ratings": {str(t): r for t, r in initial.items()},
             "initial_season": prior_state.get('initial_season', prior_state['season']) if prior_state else season,
             "ratings": {str(r["team_id"]): r["d1_elo"] for r in rows}}

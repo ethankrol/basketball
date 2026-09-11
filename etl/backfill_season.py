@@ -12,7 +12,7 @@ from .elo import ELO_VERSION, season_initial_ratings
 from .membership import season_nonparticipants
 
 
-def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False):
+def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False, elo_k=20.0, margin_of_victory=False):
     season, tables = payload["season"], payload["tables"]
     if overrides.get("season") != season:
         raise ValueError("Overrides must explicitly match the exported season")
@@ -51,7 +51,8 @@ def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False)
         prior_date = dates[week - 1]
         rows = compute_features(games, eligible, cutoff, polls[week - 1], prior_date,
                                 preseason_poll=polls.get(1), preseason_date=dates.get(1), initial_ratings=initial_ratings,
-                                previous_previous_poll=polls.get(week - 2))
+                                previous_previous_poll=polls.get(week - 2), k=elo_k,
+                                margin_of_victory=margin_of_victory)
         run_id = content_hash({"source": source_hash, "week": week, "cutoff": cutoff})
         # Tie-break by stable ID for reproducible display; scores retain ties.
         ordered = sorted(rows, key=lambda r: (-r["previous_normal_points"], r["team_id"]))
@@ -89,7 +90,8 @@ def build(payload, overrides, prior_state=None, carryover=0.75, bootstrap=False)
               "evaluated_polls": len(metrics), "feature_rows": len(snapshots),
               "mean_top25_overlap": sum(m["top25_overlap"] for m in metrics) / len(metrics),
               "mean_mae_vote_recipients": sum(m["mae_vote_recipients"] for m in metrics) / len(metrics),
-              "elo_carryover": carryover, "elo_bootstrap": bootstrap,
+              "elo_carryover": carryover, "elo_k": elo_k,
+              "margin_of_victory": margin_of_victory, "elo_bootstrap": bootstrap,
               "prior_elo_state_hash": content_hash(prior_state) if prior_state is not None else None,
               "elo_initial_season": prior_state.get('initial_season', prior_state['season']) if prior_state else season,
               "metrics": metrics,

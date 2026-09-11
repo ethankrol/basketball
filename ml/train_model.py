@@ -58,24 +58,35 @@ def metrics(frame, prediction):
     errors = []
     rank_errors = []
     exact_ranks = []
+    within_one = []
     within_two = []
+    weekly_exact = []
     for _, poll in values.groupby(["season", "target_week"], sort=True):
-        actual = set(poll.nlargest(25, TARGET).team_id)
+        # Only official Top-25 teams count toward rank-accuracy metrics.
+        # The feature rows also include teams receiving votes, whose
+        # ``actual_rank`` is null and must not enter this denominator.
+        actual = set(poll.loc[poll.actual_rank.between(1, 25), "team_id"])
         predicted = set(poll.nlargest(25, "prediction").team_id)
         scores.append(len(actual & predicted))
         errors.extend((poll.prediction - poll[TARGET]).to_numpy())
         predicted_order = poll.sort_values(["prediction", "team_id"], ascending=[False, True])
         predicted_ranks = {team: rank for rank, team in enumerate(predicted_order.team_id, 1)}
+        poll_exact = []
         for _, row in poll[poll.team_id.isin(actual)].iterrows():
             error = abs(predicted_ranks[row.team_id] - int(row.actual_rank))
             rank_errors.append(error)
             exact_ranks.append(error == 0)
+            within_one.append(error <= 1)
             within_two.append(error <= 2)
+            poll_exact.append(error == 0)
+        weekly_exact.append(float(np.mean(poll_exact)))
     err = np.asarray(errors)
     return {"polls": len(scores), "mean_top25_overlap": float(np.mean(scores)),
             "mae": float(np.mean(np.abs(err))), "rmse": float(np.sqrt(np.mean(err ** 2))),
             "top25_mean_absolute_rank_error": float(np.mean(rank_errors)),
             "top25_exact_rank_accuracy": float(np.mean(exact_ranks)),
+            "top25_weekly_exact_rank_accuracy": float(np.mean(weekly_exact)),
+            "top25_within_one_rank_accuracy": float(np.mean(within_one)),
             "top25_within_two_rank_accuracy": float(np.mean(within_two))}
 
 
@@ -100,22 +111,66 @@ def rank_metrics(frame, predicted_rank):
     """Evaluate an ordinal rank model without treating ranks as vote scores."""
     values = frame[["season", "target_week", "team_id", TARGET, "actual_rank"]].copy()
     values["predicted_rank"] = predicted_rank
-    overlaps, errors, exact, within_two = [], [], [], []
+    overlaps, errors, exact, within_one, within_two, weekly_exact = [], [], [], [], [], []
     for _, poll in values.groupby(["season", "target_week"], sort=True):
-        actual = set(poll.nlargest(25, TARGET).team_id)
+        # Exclude teams that received votes but were not officially ranked.
+        actual = set(poll.loc[poll.actual_rank.between(1, 25), "team_id"])
         predicted = set(poll.nsmallest(25, "predicted_rank").team_id)
         overlaps.append(len(actual & predicted))
         order = poll.sort_values(["predicted_rank", "team_id"])
         ranks = {team: rank for rank, team in enumerate(order.team_id, 1)}
+        poll_exact = []
         for _, row in poll[poll.team_id.isin(actual)].iterrows():
             error = abs(ranks[row.team_id] - int(row.actual_rank))
             errors.append(error)
             exact.append(error == 0)
+            within_one.append(error <= 1)
             within_two.append(error <= 2)
+            poll_exact.append(error == 0)
+        weekly_exact.append(float(np.mean(poll_exact)))
     return {"polls": len(overlaps), "mean_top25_overlap": float(np.mean(overlaps)),
             "top25_mean_absolute_rank_error": float(np.mean(errors)),
             "top25_exact_rank_accuracy": float(np.mean(exact)),
+            "top25_weekly_exact_rank_accuracy": float(np.mean(weekly_exact)),
+            "top25_within_one_rank_accuracy": float(np.mean(within_one)),
             "top25_within_two_rank_accuracy": float(np.mean(within_two))}
+
+
+def rank_miss_analysis(frame, prediction, higher_is_better=True):
+    """Classify Top-25 ordering misses and movement bias by weekly results."""
+    columns = ["season", "target_week", "team_id", "actual_rank", "previous_rank",
+               "since_poll_d1_wins", "since_poll_d1_losses"]
+    values = frame[columns].copy()
+    values["prediction"] = prediction
+    totals = defaultdict(int)
+    movement_bias = defaultdict(list)
+    for _, poll in values.groupby(["season", "target_week"], sort=True):
+        ordered = poll.sort_values(["prediction", "team_id"],
+                                   ascending=[not higher_is_better, True])
+        predicted_ranks = {team: rank for rank, team in enumerate(ordered.team_id, 1)}
+        actual = set(poll.loc[poll.actual_rank.between(1, 25), "team_id"])
+        predicted = set(ordered.head(25).team_id)
+        totals["polls"] += 1
+        totals["top25_entries"] += len(predicted - actual)
+        totals["top25_exits"] += len(actual - predicted)
+        for _, row in poll[poll.team_id.isin(actual)].iterrows():
+            predicted_rank = predicted_ranks[row.team_id]
+            error = abs(predicted_rank - int(row.actual_rank))
+            if error == 1:
+                totals["adjacent_rank_swaps"] += 1
+            elif error > 1:
+                totals["larger_rank_errors"] += 1
+            if pd.notna(row.previous_rank) and 1 <= row.previous_rank <= 25:
+                actual_change = row.previous_rank - row.actual_rank
+                predicted_change = row.previous_rank - predicted_rank
+                if row.since_poll_d1_losses:
+                    movement_bias["after_loss"].append(predicted_change - actual_change)
+                if row.since_poll_d1_wins:
+                    movement_bias["after_win"].append(predicted_change - actual_change)
+    return {**totals,
+            "mean_rank_movement_bias": {name: float(np.mean(values))
+                                        for name, values in movement_bias.items()},
+            "movement_bias_interpretation": "Positive means the prediction moved teams upward more than the poll did."}
 
 
 def ordinal_targets(data):
@@ -128,8 +183,9 @@ def ordinal_targets(data):
 
 
 def rolling_validation(data, seed=42, minimum_training_seasons=8, holdout_seasons=2):
-    """Evaluate the delta model one season at a time in chronological order."""
+    """Compare point, point-change, and ordinal models on the same future polls."""
     seasons = sorted(data.season.unique())[:-holdout_seasons]
+    ordinal_target = ordinal_targets(data)
     results = []
     for index in range(minimum_training_seasons, len(seasons)):
         train_seasons, validation_season = seasons[:index], seasons[index]
@@ -140,17 +196,39 @@ def rolling_validation(data, seed=42, minimum_training_seasons=8, holdout_season
         from sklearn.impute import SimpleImputer
         from sklearn.ensemble import HistGradientBoostingRegressor
         imputer = SimpleImputer(strategy="median", add_indicator=True)
-        model = HistGradientBoostingRegressor(max_iter=200, max_leaf_nodes=15,
-                                              learning_rate=.04, l2_regularization=5,
-                                              random_state=seed)
         prior = data["previous_normal_points"].to_numpy()
-        y = data[TARGET].to_numpy() - prior
-        model.fit(imputer.fit_transform(X.loc[train_mask]), y[train_mask])
-        prediction = model.predict(imputer.transform(X.loc[val_mask])) + prior[val_mask]
-        result = metrics(data.loc[val_mask], prediction)
-        result["season"] = int(validation_season)
-        results.append(result)
+        transformed_train = imputer.fit_transform(X.loc[train_mask])
+        transformed_validation = imputer.transform(X.loc[val_mask])
+        point_model = HistGradientBoostingRegressor(max_iter=200, max_leaf_nodes=15,
+                                                     learning_rate=.04, l2_regularization=5,
+                                                     random_state=seed)
+        delta_model = HistGradientBoostingRegressor(max_iter=200, max_leaf_nodes=15,
+                                                     learning_rate=.04, l2_regularization=5,
+                                                     random_state=seed)
+        ordinal_model = HistGradientBoostingRegressor(max_iter=200, max_leaf_nodes=15,
+                                                       learning_rate=.04, l2_regularization=5,
+                                                       random_state=seed)
+        point_model.fit(transformed_train, data.loc[train_mask, TARGET])
+        delta_model.fit(transformed_train, data.loc[train_mask, TARGET] - prior[train_mask])
+        ordinal_model.fit(transformed_train, ordinal_target[train_mask])
+        validation_frame = data.loc[val_mask]
+        point_prediction = point_model.predict(transformed_validation)
+        delta_prediction = delta_model.predict(transformed_validation) + prior[val_mask]
+        ordinal_prediction = ordinal_model.predict(transformed_validation)
+        results.append({"season": int(validation_season), "models": {
+            "hgb_score": metrics(validation_frame, point_prediction),
+            "hgb_delta": metrics(validation_frame, delta_prediction),
+            "hgb_rank": rank_metrics(validation_frame, ordinal_prediction),
+        }})
     return results
+
+
+def summarize_rolling_validation(results):
+    """Average each model's metrics over identical chronological validation polls."""
+    names = sorted({name for result in results for name in result["models"]})
+    return {name: {metric: float(np.mean([result["models"][name][metric] for result in results]))
+                   for metric in result["models"][name]}
+            for name in names}
 
 
 def train(data, test_seasons=2, seed=42):
@@ -199,8 +277,12 @@ def train(data, test_seasons=2, seed=42):
         val_frame = data[data.season.isin(validation)]
         test_pred = model.predict(X_test)
         if name == "hgb_delta": test_pred += prior[data.season.isin(test)]
-        report["models"][name] = {"validation": metrics(val_frame, val_pred),
-                                  "test": metrics(data[data.season.isin(test)], test_pred)}
+        report["models"][name] = {
+            "validation": metrics(val_frame, val_pred),
+            "validation_miss_analysis": rank_miss_analysis(val_frame, val_pred),
+            "test": metrics(data[data.season.isin(test)], test_pred),
+            "test_miss_analysis": rank_miss_analysis(data[data.season.isin(test)], test_pred),
+        }
         fitted[name] = model
     # A separate inclusion model learns the first AP decision: whether a team
     # receives any votes. Its probability is a useful ranking signal near the
@@ -222,23 +304,41 @@ def train(data, test_seasons=2, seed=42):
         "validation": rank_metrics(data[data.season.isin(validation)], rank_model.predict(X_val)),
         "test": rank_metrics(data[data.season.isin(test)], rank_model.predict(X_test)),
     }
-    # Select on validation overlap, with MAE as tie-breaker, then refit selected
-    # model on train + validation before the untouched test is reported.
-    selected = min((n for n in report["models"] if n in {"ridge_score", "hgb_score", "hgb_delta"}),
-                   key=lambda n: (report["models"][n]["validation"]["top25_mean_absolute_rank_error"],
-                                  -report["models"][n]["validation"]["mean_top25_overlap"],
-                                  report["models"][n]["validation"]["mae"]))
+    rank_validation_prediction = rank_model.predict(X_val)
+    rank_test_prediction = rank_model.predict(X_test)
+    report["models"]["hgb_rank"].update({
+        "validation_miss_analysis": rank_miss_analysis(data[data.season.isin(validation)], rank_validation_prediction,
+                                                         higher_is_better=False),
+        "test_miss_analysis": rank_miss_analysis(data[data.season.isin(test)], rank_test_prediction,
+                                                   higher_is_better=False),
+    })
+    # Select the model that gets the most actual Top-25 teams at their exact
+    # weekly rank. Rank error and Top-25 overlap only break an exact-rank tie.
+    candidates = {"hgb_score", "hgb_delta", "hgb_rank"}
+    selected = min(candidates,
+                   key=lambda n: (-report["models"][n]["validation"]["top25_weekly_exact_rank_accuracy"],
+                                  report["models"][n]["validation"]["top25_mean_absolute_rank_error"],
+                                  -report["models"][n]["validation"]["mean_top25_overlap"]))
     refit_mask = data.season.isin(train + validation)
     X_refit = imputer.fit_transform(X.loc[refit_mask])
     X_test = imputer.transform(X.loc[data.season.isin(test)])
-    target = y[refit_mask] - prior[refit_mask] if selected == "hgb_delta" else y[refit_mask]
-    final_model = models[selected][0].__class__(**models[selected][0].get_params())
+    target = (y[refit_mask] - prior[refit_mask] if selected == "hgb_delta" else
+              y_rank[refit_mask] if selected == "hgb_rank" else y[refit_mask])
+    selected_estimator = rank_model if selected == "hgb_rank" else models[selected][0]
+    final_model = selected_estimator.__class__(**selected_estimator.get_params())
     final_model.fit(X_refit, target)
     report["selected_model"] = selected
-    report["test_selected_after_refit"] = metrics(data[data.season.isin(test)],
-        final_model.predict(X_test) + (prior[data.season.isin(test)] if selected == "hgb_delta" else 0))
+    final_prediction = final_model.predict(X_test)
+    if selected == "hgb_delta":
+        final_prediction += prior[data.season.isin(test)]
+    selected_metrics = (rank_metrics(data[data.season.isin(test)], final_prediction) if selected == "hgb_rank"
+                        else metrics(data[data.season.isin(test)], final_prediction))
+    report["test_selected_after_refit"] = selected_metrics
+    report["test_selected_miss_analysis"] = rank_miss_analysis(
+        data[data.season.isin(test)], final_prediction, higher_is_better=selected != "hgb_rank")
     report["baseline_persistence_test"] = metrics(data[data.season.isin(test)], prior[data.season.isin(test)])
     report["rolling_validation"] = rolling_validation(data, seed=seed, holdout_seasons=test_seasons)
+    report["rolling_validation_summary"] = summarize_rolling_validation(report["rolling_validation"])
     return final_model, inclusion, rank_model, imputer, features, report
 
 
@@ -255,7 +355,8 @@ def main():
     import joblib
     joblib.dump({"model": model, "inclusion_model": inclusion, "rank_model": rank_model,
                  "imputer": imputer, "features": features,
-                 "target": report["target"], "model_name": report["selected_model"]},
+                 "target": "ordinal_rank" if report["selected_model"] == "hgb_rank" else report["target"],
+                 "model_name": report["selected_model"]},
                 args.output / "model.joblib")
     (args.output / "features.json").write_text(json.dumps(features, indent=2) + "\n")
     # Pandas/numpy scalars can appear in metric values; normalize them before
