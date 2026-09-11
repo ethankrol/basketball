@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from .features import FEATURE_VERSION, content_hash
+from etl.features import FEATURE_VERSION, content_hash
 
 
 EXCLUDE = {"run_id", "season", "target_week", "cutoff_date_exclusive", "previous_poll_date",
@@ -101,10 +101,10 @@ def train(data, test_seasons=2, seed=42):
     for name, (model, target) in models.items():
         model.fit(X_train, target)
         val_pred = model.predict(X_val)
-        if name == "xgb_delta": val_pred += prior[data.season.isin(validation)]
+        if name == "hgb_delta": val_pred += prior[data.season.isin(validation)]
         val_frame = data[data.season.isin(validation)]
         test_pred = model.predict(X_test)
-        if name == "xgb_delta": test_pred += prior[data.season.isin(test)]
+        if name == "hgb_delta": test_pred += prior[data.season.isin(test)]
         report["models"][name] = {"validation": metrics(val_frame, val_pred),
                                   "test": metrics(data[data.season.isin(test)], test_pred)}
         fitted[name] = model
@@ -114,12 +114,13 @@ def train(data, test_seasons=2, seed=42):
                                                      -report["models"][n]["validation"]["mae"]))
     refit_mask = data.season.isin(train + validation)
     X_refit = imputer.fit_transform(X.loc[refit_mask])
-    target = y[refit_mask] - prior[refit_mask] if selected == "xgb_delta" else y[refit_mask]
+    X_test = imputer.transform(X.loc[data.season.isin(test)])
+    target = y[refit_mask] - prior[refit_mask] if selected == "hgb_delta" else y[refit_mask]
     final_model = models[selected][0].__class__(**models[selected][0].get_params())
     final_model.fit(X_refit, target)
     report["selected_model"] = selected
     report["test_selected_after_refit"] = metrics(data[data.season.isin(test)],
-        final_model.predict(X_test) + (prior[data.season.isin(test)] if selected == "xgb_delta" else 0))
+        final_model.predict(X_test) + (prior[data.season.isin(test)] if selected == "hgb_delta" else 0))
     report["baseline_persistence_test"] = metrics(data[data.season.isin(test)], prior[data.season.isin(test)])
     return final_model, imputer, features, report
 
@@ -134,10 +135,16 @@ def main():
     data = load_rows(args.root, args.start, args.end)
     model, imputer, features, report = train(data)
     args.output.mkdir(parents=True, exist_ok=True)
-    model.save_model(str(args.output / "model.json"))
     import joblib
-    joblib.dump(imputer, args.output / "imputer.joblib")
+    joblib.dump({"model": model, "imputer": imputer, "features": features,
+                 "target": report["target"], "model_name": report["selected_model"]},
+                args.output / "model.joblib")
     (args.output / "features.json").write_text(json.dumps(features, indent=2) + "\n")
+    # Pandas/numpy scalars can appear in metric values; normalize them before
+    # hashing and writing the report so the artifact is portable across Python
+    # environments.
+    report = json.loads(json.dumps(report, default=lambda value: value.item()
+                                   if hasattr(value, "item") else str(value)))
     report["artifact_hash"] = content_hash(report)
     (args.output / "report.json").write_text(json.dumps(report, indent=2) + "\n")
     print(json.dumps(report, indent=2))
